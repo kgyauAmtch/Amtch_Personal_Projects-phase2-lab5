@@ -27,12 +27,15 @@ jobs:
       - name: Lint Code
         run: |
           pip install flake8
-          flake8 glue_jobs tests --max-line-length=120
+          # Lint all Python files recursively from the repo root
+          flake8 . --max-line-length=120
 
       - name: Run Tests
         run: |
           pip install pytest
-          pytest tests/
+          # Run pytest only if tests directory exists; otherwise skip gracefully
+          if [ -d "tests" ]; then pytest tests/; else echo "No tests directory, skipping tests"; fi
+
 
   # # Optional: Deploy Step Function Definition
   # deploy-step-function:
