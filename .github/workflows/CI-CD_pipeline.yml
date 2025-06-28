@@ -74,3 +74,69 @@ jobs:
       with:
         file: ./coverage.xml
         fail_ci_if_error: false
+
+# Job 2: Validate Step Function Definition
+  stepfunction-validate:
+    name: Validate Step Function
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install AWS CLI and validation tools
+      run: |
+        pip install awscli boto3 jsonschema
+        
+    - name: Validate Step Function JSON
+      run: |
+        # Check if Step Function JSON is valid
+        if [ -f "stepfunctions/lab5-etl-pipeline.json" ]; then
+          echo "Validating Step Function JSON syntax..."
+          python -m json.tool stepfunctions/lab5-etl-pipeline.json > /dev/null
+          echo "Step Function JSON is valid"
+        else
+          echo "Step Function JSON file not found"
+          exit 1
+        fi
+        
+    - name: Validate Step Function Schema
+      run: |
+        # Create a basic schema validation script
+        cat > validate_stepfunction.py << 'EOF'
+        import json
+        import sys
+        
+        def validate_stepfunction(file_path):
+            with open(file_path, 'r') as f:
+                definition = json.load(f)
+            
+            # Basic validation checks
+            required_fields = ['Comment', 'StartAt', 'States']
+            for field in required_fields:
+                if field not in definition:
+                    print(f"Missing required field: {field}")
+                    return False
+            
+            # Check if StartAt state exists
+            start_state = definition['StartAt']
+            if start_state not in definition['States']:
+                print(f"StartAt state '{start_state}' not found in States")
+                return False
+            
+            print("Step Function definition is valid")
+            return True
+        
+        if __name__ == "__main__":
+            if validate_stepfunction("stepfunctions/lab5-etl-pipeline.json"):
+                sys.exit(0)
+            else:
+                sys.exit(1)
+        EOF
+        
+        python validate_stepfunction.py
