@@ -2,7 +2,7 @@ import pytest
 import sys
 from unittest.mock import patch, MagicMock
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType,col, to_timestamp, regexp_replace
 import pandas as pd
 from datetime import datetime
 
@@ -142,7 +142,7 @@ class TestStagingJobs:
         assert cleaned_df.count() == 4, "Should have 4 records after removing null order_ids"
         
         # Test type conversions
-        from pyspark.sql.functions import col, to_timestamp, regexp_replace
+       
         
         transformed_df = cleaned_df.select(
             col("order_id").cast(IntegerType()).alias("order_id"),
@@ -199,11 +199,21 @@ class TestStagingJobs:
     def test_staging_data_aggregations(self, sample_raw_orders_data):
         """Test data aggregation functions for staging layer"""
         from pyspark.sql.functions import count, sum as spark_sum, avg, max as spark_max
-        
+
         df = sample_raw_orders_data.filter(
-            (df.order_id.isNotNull()) & 
-            (df.total_amount.rlike(r'^\d+\.?\d*$'))
+            (sample_raw_orders_data.order_id.isNotNull()) &
+            (sample_raw_orders_data.total_amount.rlike(r'^\d+\.?\d*$'))
         )
+
+    # Continue with your aggregation tests
+        result = df.groupBy("user_id").agg(
+            count("order_id").alias("order_count"),
+            spark_sum("total_amount").alias("total_spent"),
+            avg("total_amount").alias("avg_spent"),
+            spark_max("total_amount").alias("max_spent")
+        )
+        assert result.count() >= 0  # Example assertion
+
         
         # Test user-level aggregations
         user_agg = df.groupBy("user_id").agg(
