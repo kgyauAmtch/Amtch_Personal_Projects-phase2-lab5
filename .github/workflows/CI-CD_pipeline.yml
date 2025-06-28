@@ -215,7 +215,7 @@ jobs:
           aws stepfunctions create-state-machine \
             --name "$STEP_FUNCTION_NAME" \
             --definition "$NEW_DEF" \
-            --role-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/StepFunctionsExecutionRole"
+            --role-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/StepFunctions-lab5-lakehouse-stepfunc-role-fudiny7i5"
           echo "Step Function created successfully"
         fi
         
