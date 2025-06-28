@@ -38,3 +38,30 @@ def merge_upsert(spark, df, path):
          .execute())
     except:
         df.write.format("delta").mode("overwrite").save(path)
+
+# ------------------- Main -------------------
+def main():
+    args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+    sc = SparkContext()
+    glueContext = GlueContext(sc)
+    spark = glueContext.spark_session
+
+    config = get_config()
+
+    log.info("Loading staging products data...")
+    df = spark.read.format("delta").load(f"{config['staging_path']}/products")
+
+    log.info("Applying primary key validation...")
+    df = validate_primary_keys(df)
+
+    log.info("Deduplicating products...")
+    df = deduplicate_products(df)
+
+    log.info("Merging into processed Delta table...")
+    merge_upsert(spark, df, f"{config['processed_path']}/products")
+
+    log.info("✓ Products staging to processed completed successfully")
+    sc.stop()
+
+if __name__ == "__main__":
+    main()
