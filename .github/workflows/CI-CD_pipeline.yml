@@ -156,8 +156,8 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{AWS_SECRET_ACCESS_KEY }}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
         
     - name: Upload Spark Jobs to S3
@@ -198,7 +198,7 @@ jobs:
       run: |
         # Get current Step Function definition
         CURRENT_DEF=$(aws stepfunctions describe-state-machine \
-          --state-machine-arn "arn:aws:states:$AWS_REGION:${{AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+          --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
           --query 'definition' --output text 2>/dev/null || echo "")
         
         # Read new definition
@@ -207,7 +207,7 @@ jobs:
         if [ -n "$CURRENT_DEF" ]; then
           echo "Updating existing Step Function..."
           aws stepfunctions update-state-machine \
-            --state-machine-arn "arn:aws:states:$AWS_REGION:${{AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+            --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
             --definition "$NEW_DEF"
           echo "Step Function updated successfully"
         else
@@ -215,7 +215,7 @@ jobs:
           aws stepfunctions create-state-machine \
             --name "$STEP_FUNCTION_NAME" \
             --definition "$NEW_DEF" \
-            --role-arn "arn:aws:iam::${{AWS_ACCOUNT_ID }}:role/StepFunctions-lab5-lakehouse-stepfunc-role-fudiny7i5"
+            --role-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/StepFunctions-lab5-lakehouse-stepfunc-role-fudiny7i5"
           echo "Step Function created successfully"
         fi
         
@@ -226,7 +226,7 @@ jobs:
         
         # Check if Step Function is active
         STATUS=$(aws stepfunctions describe-state-machine \
-          --state-machine-arn "arn:aws:states:$AWS_REGION:${{AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+          --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
           --query 'status' --output text)
         
         if [ "$STATUS" = "ACTIVE" ]; then
