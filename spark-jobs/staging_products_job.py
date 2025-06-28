@@ -18,3 +18,23 @@ def get_config():
         'processed_path': 's3://lakehouse-lab5/lakehouse-dwh/processed'
     }
 
+
+# ------------------- Validation -------------------
+def validate_primary_keys(df):
+    return df.filter(col("product_id").isNotNull() & col("product_name").isNotNull())
+
+# ------------------- Deduplication -------------------
+def deduplicate_products(df):
+    return df.dropDuplicates(["product_id"])
+
+# ------------------- Merge to Delta -------------------
+def merge_upsert(spark, df, path):
+    try:
+        delta_table = DeltaTable.forPath(spark, path)
+        (delta_table.alias("target")
+         .merge(df.alias("source"), "target.product_id = source.product_id")
+         .whenMatchedUpdateAll()
+         .whenNotMatchedInsertAll()
+         .execute())
+    except:
+        df.write.format("delta").mode("overwrite").save(path)
