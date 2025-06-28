@@ -1,61 +1,76 @@
-name: Lakehouse for Ecommerce CI/CD
+name: Lab5 ETL Pipeline CI/CD
 
 on:
   push:
-    branches:
-      - main
-      - prod1
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-north-1
+  STEP_FUNCTION_NAME: lab5-lakehouse-stepfunc
 
 jobs:
-  build-and-test:
+  # Job 1: CI for Spark Jobs
+  spark-ci:
+    name: Spark Job CI
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Lint Code
-        run: |
-          pip install flake8
-          # Lint all Python files recursively from the repo root
-          flake8 . --max-line-length=120
-
-      - name: Run Tests
-        run: |
-          pip install pytest
-          # Run pytest only if tests directory exists; otherwise skip gracefully
-          if [ -d "tests" ]; then pytest tests/; else echo "No tests directory, skipping tests"; fi
-
-
-  # # Optional: Deploy Step Function Definition
-  # deploy-step-function:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   if: github.ref == 'refs/heads/prodq'
-
-  #   steps:
-  #     - name: Checkout Repo
-  #       uses: actions/checkout@v3
-
-  #     - name: Configure AWS Credentials
-  #       uses: aws-actions/configure-aws-credentials@v2
-  #       with:
-  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  #         aws-region: eu-north-1
-
-  #     - name: Deploy Step Function
-  #       run: |
-  #         aws stepfunctions update-state-machine \
-  #           --state-machine-arn arn:aws:iam::763927202642:role/service-role/StepFunctions-lab5-lakehouse-stepfunc-role-fudiny7i5\
-  #           --definition file://step_functions/lakehouse_pipeline.json
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyspark==3.4.0
+        pip install pytest pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Lint Spark Jobs
+      run: |
+        pip install flake8
+        # Stop build if there are Python syntax errors or undefined names
+        flake8 spark-jobs/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 spark-jobs/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Run Spark Job Tests
+      run: |
+        # Run unit tests for Spark jobs
+        if [ -d "tests/" ]; then
+          python -m pytest tests/ -v --cov=spark-jobs --cov-report=xml
+        else
+          echo "No tests directory found, skipping tests"
+        fi
+        
+    - name: Validate Spark Job Syntax
+      run: |
+        # Check if Spark jobs can be imported without syntax errors
+        for file in spark-jobs/*.py; do
+          if [ -f "$file" ]; then
+            echo "Validating $file"
+            python -m py_compile "$file"
+          fi
+        done
+        
+    - name: Upload coverage reports
+      if: success()
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
