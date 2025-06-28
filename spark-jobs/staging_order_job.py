@@ -46,3 +46,38 @@ def merge_upsert(spark, df, path):
          .execute())
     except:
         df.write.format("delta").mode("overwrite").partitionBy("date").save(path)
+
+
+# ------------------- Main -------------------
+def main():
+    args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+    sc = SparkContext()
+    glueContext = GlueContext(sc)
+    spark = glueContext.spark_session
+
+    config = get_config()
+    spark.conf.set("spark.sql.sources.partitionOverwriteMode", "static")
+
+    log.info("Loading staging orders data...")
+    df = spark.read.format("delta").load(f"{config['staging_path']}/orders")
+
+    log.info("Applying primary key validation...")
+    df = validate_primary_keys(df)
+
+    log.info("Converting timestamps...")
+    df = convert_timestamps(df, config['timestamp_format'])
+
+    log.info("Deduplicating orders...")
+    df = deduplicate_orders(df)
+
+    log.info("Adding partition column...")
+    df = df.withColumn("date", to_date("order_timestamp"))
+
+    log.info("Merging into processed Delta table...")
+    merge_upsert(spark, df, f"{config['processed_path']}/orders")
+
+    log.info("✓ Orders staging to processed completed successfully")
+    sc.stop()
+
+if __name__ == "__main__":
+    main()
