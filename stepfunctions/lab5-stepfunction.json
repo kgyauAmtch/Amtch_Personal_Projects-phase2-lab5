@@ -1,0 +1,300 @@
+{
+  "Comment": "Lab 5 ETL Pipeline with per-file logic for raw and processed Glue jobs, with Athena query step and robust error handling.",
+  "StartAt": "Normalize Input",
+  "States": {
+    "Normalize Input": {
+      "Type": "Pass",
+      "Parameters": {
+        "bucket.$": "$.detail.bucket.name",
+        "key.$": "$.detail.object.key"
+      },
+      "ResultPath": "$.s3info",
+      "Next": "Trigger and Validate Headers"
+    },
+    "Trigger and Validate Headers": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "lab5-validate-trigger",
+        "Payload": {
+          "bucket.$": "$.s3info.bucket",
+          "key.$": "$.s3info.key",
+          "expected_headers": {
+            "orders_apr_2025.xlsx": [
+              "order_id",
+              "user_id",
+              "order_timestamp",
+              "order_num",
+              "total_amount",
+              "date"
+            ],
+            "order_items_apr_2025.xlsx": [
+              "id",
+              "order_id",
+              "user_id",
+              "days_since_prior_order",
+              "product_id",
+              "add_to_cart_order",
+              "reordered",
+              "order_timestamp",
+              "date"
+            ],
+            "products.csv": [
+              "product_id",
+              "product_name",
+              "department_id",
+              "department"
+            ]
+          }
+        }
+      },
+      "ResultPath": "$.validation_result",
+      "Next": "Check Validation Result",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Check Validation Result": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.validation_result.Payload.all_valid",
+          "BooleanEquals": true,
+          "Next": "Check File Type"
+        }
+      ],
+      "Default": "Validation Failed"
+    },
+    "Validation Failed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-north-1:763927202642:lab5-alerts",
+        "Message": "File validation failed for Lab 5 ETL pipeline.",
+        "Subject": "Lab 5 ETL Validation Error"
+      },
+      "End": true
+    },
+    "Check File Type": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "*orders*.xlsx",
+          "Next": "Glue Job - Raw Orders"
+        },
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "*order_items*.xlsx",
+          "Next": "Glue Job - Raw OrderItems"
+        },
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "*products*.csv",
+          "Next": "Glue Job - Raw Products"
+        }
+      ],
+      "Default": "Validation Failed"
+    },
+    "Glue Job - Raw Orders": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-raw(orders)",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_raw_result",
+      "Next": "WaitForOrders",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "WaitForOrders": {
+      "Type": "Wait",
+      "Seconds": 7,
+      "Next": "Glue Job - Processed Orders"
+    },
+    "Glue Job - Processed Orders": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-Staging-orders",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_processed_result",
+      "Next": "Run Athena Query",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Glue Job - Raw OrderItems": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-raw(order_items)",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_raw_result",
+      "Next": "WaitForOrderItems",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "WaitForOrderItems": {
+      "Type": "Wait",
+      "Seconds": 7,
+      "Next": "Glue Job - Processed OrderItems"
+    },
+    "Glue Job - Processed OrderItems": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-Staging-order_items",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_processed_result",
+      "Next": "Run Athena Query",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Glue Job - Raw Products": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-raw(products)",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_raw_result",
+      "Next": "WaitForProducts",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "WaitForProducts": {
+      "Type": "Wait",
+      "Seconds": 7,
+      "Next": "Glue Job - Processed Products"
+    },
+    "Glue Job - Processed Products": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab5-staging_products",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.glue_processed_result",
+      "Next": "Run Athena Query",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Run Athena Query": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::athena:startQueryExecution.sync",
+      "Parameters": {
+        "QueryString": "SELECT * FROM lakehouse_dwh.order_items LIMIT 10",
+        "QueryExecutionContext": {
+          "Database": "lakehouse_dwh"
+        },
+        "ResultConfiguration": {
+          "OutputLocation": "s3://lakehouse-lab5/athena_query_results/"
+        }
+      },
+      "ResultPath": "$.athena_query_result",
+      "Next": "Archive File",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Archive File": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
+      "Parameters": {
+        "Bucket": "lakehouse-lab5",
+        "CopySource.$": "States.Format('{}/{}', $.s3info.bucket, $.s3info.key)",
+        "Key.$": "States.Format('lakehouse-dwh/archived/stepfunction/{}', $.s3info.key)"
+      },
+      "Next": "End State",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Log Error and Alert": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-north-1:763927202642:lab5-alerts",
+        "Message": "Lab 5 ETL Pipeline Error - An error occurred during pipeline execution. Check CloudWatch logs for details.",
+        "Subject": "Lab 5 ETL Pipeline Error"
+      },
+      "End": true
+    },
+    "End State": {
+      "Type": "Succeed"
+    }
+  }
+}
