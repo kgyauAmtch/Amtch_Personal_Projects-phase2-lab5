@@ -1,5 +1,5 @@
 {
-  "Comment": "Lab 5 ETL Pipeline with per-file logic for raw and processed Glue jobs, with Athena query step and robust error handling.",
+  "Comment": "Lab 5 ETL Pipeline",
   "StartAt": "Normalize Input",
   "States": {
     "Normalize Input": {
@@ -231,8 +231,8 @@
           "--key.$": "$.s3info.key"
         }
       },
-      "ResultPath": "$.glue_processed_result",
-      "Next": "Run Athena Query",
+     "ResultPath": "$.glue_processed_result",
+      "Next": "Run Glue Crawler",
       "Catch": [
         {
           "ErrorEquals": [
@@ -241,6 +241,40 @@
           "Next": "Log Error and Alert"
         }
       ]
+    },
+    "Run Glue Crawler": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "lab5-lakehouse_dwh_crawler"
+      },
+      "ResultPath": "$.crawler_result",
+      "Next": "Wait For Crawler",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.CrawlerRunningException",
+            "ThrottlingException",
+            "ServiceUnavailableException"
+          ],
+          "IntervalSeconds": 20,
+          "MaxAttempts": 5,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Wait For Crawler": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Run Athena Query"
     },
     "Run Athena Query": {
       "Type": "Task",
