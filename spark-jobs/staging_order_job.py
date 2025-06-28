@@ -20,4 +20,29 @@ def get_config():
         'timestamp_format': "yyyy-MM-dd'T'HH:mm:ss"
     }
     
-    
+
+# ------------------- Deduplication -------------------
+def deduplicate_orders(df):
+    window = Window.partitionBy("order_id").orderBy(col("order_timestamp").desc())
+    df = df.withColumn("row_num", row_number().over(window)).filter("row_num = 1").drop("row_num")
+    return df.orderBy("order_timestamp").drop("order_num") \
+             .withColumn("order_num", row_number().over(Window.orderBy("order_timestamp")))
+
+# ------------------- Validation -------------------
+def validate_primary_keys(df):
+    return df.filter(col("order_id").isNotNull() & col("user_id").isNotNull())
+
+def convert_timestamps(df, fmt):
+    return df.withColumn("order_timestamp", to_timestamp("order_timestamp", fmt))
+
+# ------------------- Merge to Delta -------------------
+def merge_upsert(spark, df, path):
+    try:
+        delta_table = DeltaTable.forPath(spark, path)
+        (delta_table.alias("target")
+         .merge(df.alias("source"), "target.order_id = source.order_id")
+         .whenMatchedUpdateAll()
+         .whenNotMatchedInsertAll()
+         .execute())
+    except:
+        df.write.format("delta").mode("overwrite").partitionBy("date").save(path)
