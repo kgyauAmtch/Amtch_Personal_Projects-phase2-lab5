@@ -75,7 +75,7 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
-# Job 2: Validate Step Function Definition
+# task 2: Validate Step Function Definition
   stepfunction-validate:
     name: Validate Step Function
     runs-on: ubuntu-latest
@@ -96,9 +96,9 @@ jobs:
     - name: Validate Step Function JSON
       run: |
         # Check if Step Function JSON is valid
-        if [ -f "stepfunctions/lab5-etl-pipeline.json" ]; then
+        if [ -f "stepfunctions/lab5-stepfunction.json" ]; then
           echo "Validating Step Function JSON syntax..."
-          python -m json.tool stepfunctions/lab5-etl-pipeline.json > /dev/null
+          python -m json.tool stepfunctions/lab5-stepfunction.json > /dev/null
           echo "Step Function JSON is valid"
         else
           echo "Step Function JSON file not found"
@@ -133,10 +133,105 @@ jobs:
             return True
         
         if __name__ == "__main__":
-            if validate_stepfunction("stepfunctions/lab5-etl-pipeline.json"):
+            if validate_stepfunction("stepfunctions/lab5-stepfunction.json"):
                 sys.exit(0)
             else:
                 sys.exit(1)
         EOF
         
         python validate_stepfunction.py
+
+# task 3: Deploy to AWS (only on main branch)
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: [spark-ci, stepfunction-validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Upload Spark Jobs to S3
+      run: |
+        # Upload Spark job scripts to S3
+        if [ -d "spark-jobs/" ]; then
+          aws s3 sync spark-jobs/ s3://lakehouse-lab5/glue-scripts/ \
+            --exclude "*.pyc" \
+            --exclude "__pycache__/*" \
+            --exclude "*.git*"
+          echo "Spark jobs uploaded to S3"
+        fi
+        
+    - name: Update Glue Job Scripts
+      run: |
+        # Update Glue jobs to use the latest scripts
+        GLUE_JOBS=(
+          "lab5-raw(orders)"
+          "lab5-raw(order_items)" 
+          "lab5-raw(products)"
+          "lab5-Staging-orders"
+          "lab5-Staging-order_items"
+          "lab5-staging_products"
+        )
+        
+        for job in "${GLUE_JOBS[@]}"; do
+          echo "Checking if Glue job $job exists..."
+          if aws glue get-job --job-name "$job" > /dev/null 2>&1; then
+            echo "Glue job $job exists"
+            # Note: You might want to update the script location here
+            # aws glue update-job --job-name "$job" --job-update ScriptLocation=s3://lakehouse-lab5/glue-scripts/...
+          else
+            echo "Glue job $job not found"
+          fi
+        done
+        
+    - name: Deploy Step Function
+      run: |
+        # Get current Step Function definition
+        CURRENT_DEF=$(aws stepfunctions describe-state-machine \
+          --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+          --query 'definition' --output text 2>/dev/null || echo "")
+        
+        # Read new definition
+        NEW_DEF=$(cat stepfunctions/lab5-stepfunction.json | jq -c .)
+        
+        if [ -n "$CURRENT_DEF" ]; then
+          echo "Updating existing Step Function..."
+          aws stepfunctions update-state-machine \
+            --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+            --definition "$NEW_DEF"
+          echo "Step Function updated successfully"
+        else
+          echo "Creating new Step Function..."
+          aws stepfunctions create-state-machine \
+            --name "$STEP_FUNCTION_NAME" \
+            --definition "$NEW_DEF" \
+            --role-arn "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/StepFunctionsExecutionRole"
+          echo "Step Function created successfully"
+        fi
+        
+    - name: Run Integration Tests
+      run: |
+        # Optional: Run integration tests after deployment
+        echo "Running post-deployment validation..."
+        
+        # Check if Step Function is active
+        STATUS=$(aws stepfunctions describe-state-machine \
+          --state-machine-arn "arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$STEP_FUNCTION_NAME" \
+          --query 'status' --output text)
+        
+        if [ "$STATUS" = "ACTIVE" ]; then
+          echo "Step Function is active and ready"
+        else
+          echo "Step Function status: $STATUS"
+          exit 1
+        fi
