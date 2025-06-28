@@ -57,5 +57,5 @@ jobs:
   #     - name: Deploy Step Function
   #       run: |
   #         aws stepfunctions update-state-machine \
-  #           --state-machine-arn arn:aws:states:us-east-1:123456789012:stateMachine:LakehousePipeline \
+  #           --state-machine-arn arn:aws:iam::763927202642:role/service-role/StepFunctions-lab5-lakehouse-stepfunc-role-fudiny7i5\
   #           --definition file://step_functions/lakehouse_pipeline.json
