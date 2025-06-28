@@ -2,7 +2,8 @@ import pytest
 import sys
 from unittest.mock import patch, MagicMock
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType,col, to_timestamp, regexp_replace
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
+from pyspark.sql.functions import col, to_timestamp, regexp_replace
 import pandas as pd
 from datetime import datetime
 
