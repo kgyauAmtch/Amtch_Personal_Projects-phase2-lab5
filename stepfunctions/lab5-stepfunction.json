@@ -138,7 +138,7 @@
         }
       },
       "ResultPath": "$.glue_processed_result",
-      "Next": "Run Athena Query",
+      "Next": "Run Glue Crawler",
       "Catch": [
         {
           "ErrorEquals": [
@@ -185,7 +185,7 @@
         }
       },
       "ResultPath": "$.glue_processed_result",
-      "Next": "Run Athena Query",
+      "Next": "Run Glue Crawler",
       "Catch": [
         {
           "ErrorEquals": [
@@ -231,7 +231,7 @@
           "--key.$": "$.s3info.key"
         }
       },
-     "ResultPath": "$.glue_processed_result",
+      "ResultPath": "$.glue_processed_result",
       "Next": "Run Glue Crawler",
       "Catch": [
         {
@@ -259,7 +259,7 @@
           ],
           "IntervalSeconds": 20,
           "MaxAttempts": 5,
-          "BackoffRate": 2.0
+          "BackoffRate": 2
         }
       ],
       "Catch": [
