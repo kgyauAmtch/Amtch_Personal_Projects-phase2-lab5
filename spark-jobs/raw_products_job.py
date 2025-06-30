@@ -1,14 +1,11 @@
 import sys
-import boto3
-import pandas as pd
 import logging
 from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.utils import getResolvedOptions
 from awsglue.job import Job
-from pyspark.sql.types import (
-    StructType, StructField, IntegerType, StringType
-)
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+from pyspark.sql.functions import current_timestamp
 
 # ------------------- Logging -------------------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -23,54 +20,52 @@ def get_products_schema():
         StructField("product_name", StringType(), nullable=False)
     ])
 
-# ------------------- Main Logic -------------------
+# ------------------- Main -------------------
 def main():
     args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+    
+    # Initialize Glue and Spark
     sc = SparkContext()
     glueContext = GlueContext(sc)
     spark = glueContext.spark_session
     job = Job(glueContext)
     job.init(args['JOB_NAME'], args)
 
-    s3 = boto3.client('s3')
-    bucket = 'lakehouse-lab5'
-    key = 'raw_landing_zone/products.csv'
+    # Hardcoded S3 Input and Output paths
+    input_path = 's3://lakehouse-lab5/preprocess-csv/products*.csv'
     staging_path = 's3://lakehouse-lab5/lakehouse-dwh/staging/products'
 
     try:
-        log.info("Checking for file existence...")
-        s3.head_object(Bucket=bucket, Key=key)
-    except Exception as e:
-        log.error(f"File not found: {key} - {e}")
-        job.commit()
-        return
+        log.info(f"Reading CSV from: {input_path}")
+        
+        # Read CSV with predefined schema
+        df = spark.read.format("csv") \
+            .option("header", "true") \
+            .schema(get_products_schema()) \
+            .load(input_path)
 
-    try:
-        log.info(f"Reading CSV file: {key}")
-        csv_path = f"s3://{bucket}/{key}"
-        df = pd.read_csv(csv_path)
+        if df.rdd.isEmpty():
+            raise Exception("Input CSV is empty")
 
-        if df.empty:
-            raise Exception("CSV file is empty")
-
-        df['processed_at'] = pd.Timestamp.now()
-
-        schema = get_products_schema()
-        spark_df = spark.createDataFrame(df, schema=schema)
+        # Add a processing timestamp
+        df = df.withColumn("processed_at", current_timestamp())
 
         log.info(f"Writing to Delta Lake staging path: {staging_path}")
-        spark_df.write.format("delta") \
+        df.write.format("delta") \
             .mode("overwrite") \
             .option("overwriteSchema", "true") \
             .save(staging_path)
 
-        log.info("\u2713 Products raw to staging completed successfully")
+        log.info("✓ Products CSV written to Delta Lake staging successfully")
 
     except Exception as e:
-        log.error(f"Error during products raw to staging: {e}")
+        log.error(f"Error processing products CSV to staging: {e}")
+        raise
 
     job.commit()
     sc.stop()
 
 if __name__ == "__main__":
     main()
+
+

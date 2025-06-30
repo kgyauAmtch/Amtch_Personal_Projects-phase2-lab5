@@ -1,8 +1,5 @@
 import sys
-import boto3
-import pandas as pd
 import logging
-from io import BytesIO
 from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.utils import getResolvedOptions
@@ -10,6 +7,7 @@ from awsglue.job import Job
 from pyspark.sql.types import (
     StructType, StructField, IntegerType, TimestampType, DateType
 )
+from pyspark.sql.functions import current_timestamp
 
 # ------------------- Logging -------------------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -29,67 +27,46 @@ def get_order_items_schema():
         StructField("date", DateType(), nullable=False)
     ])
 
-
 # ------------------- Main Logic -------------------
 def main():
     args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+    
+    # Init Glue Context
     sc = SparkContext()
     glueContext = GlueContext(sc)
     spark = glueContext.spark_session
     job = Job(glueContext)
     job.init(args['JOB_NAME'], args)
 
-    s3 = boto3.client('s3')
-    bucket = 'lakehouse-lab5'
-    key = 'raw_landing_zone/order_items_apr_2025.xlsx'
+    # S3 Input and Output Paths
+    input_path = 's3://lakehouse-lab5/preprocess-csv/order_items/order_items_apr_2025.csv'
     staging_path = 's3://lakehouse-lab5/lakehouse-dwh/staging/order_items'
 
     try:
-        log.info("Checking for file existence...")
-        s3.head_object(Bucket=bucket, Key=key)
-    except Exception as e:
-        log.error(f"File not found: {key} - {e}")
-        job.commit()
-        return
+        log.info(f"Reading CSV from: {input_path}")
 
-    try:
-        log.info(f"Downloading and reading Excel file: {key}")
-        file_obj = s3.get_object(Bucket=bucket, Key=key)
-        xls = pd.ExcelFile(BytesIO(file_obj['Body'].read()))
+        df = spark.read.format("csv") \
+            .option("header", "true") \
+            .schema(get_order_items_schema()) \
+            .load(input_path)
 
-        if not xls.sheet_names:
-            raise Exception("No sheets found in Excel file")
+        if df.rdd.isEmpty():
+            raise Exception("Input CSV file is empty")
 
-        dfs = []
-        for sheet in xls.sheet_names:
-            df = xls.parse(sheet)
-            if not df.empty:
-                df['source_sheet'] = sheet
-                df['processed_at'] = pd.Timestamp.now()
-                dfs.append(df)
-
-        if not dfs:
-            raise Exception("No valid data found in any sheet")
-
-        combined_df = pd.concat(dfs, ignore_index=True)
-
-        for col in ['order_timestamp', 'date']:
-            if col in combined_df.columns:
-                combined_df[col] = pd.to_datetime(combined_df[col], errors='coerce')
-
-        schema = get_order_items_schema()
-        spark_df = spark.createDataFrame(combined_df, schema=schema)
+        # Add a processed timestamp
+        df = df.withColumn("processed_at", current_timestamp())
 
         log.info(f"Writing to Delta Lake staging path: {staging_path}")
-        spark_df.write.format("delta") \
+        df.write.format("delta") \
             .mode("overwrite") \
             .option("overwriteSchema", "true") \
             .save(staging_path)
 
-        log.info("✓ Order items raw to staging completed successfully")
+        log.info("✓ Order items CSV written to Delta Lake staging successfully")
 
     except Exception as e:
         log.error(f"Error during order items raw to staging: {e}")
+        raise
 
     job.commit()
     sc.stop()
