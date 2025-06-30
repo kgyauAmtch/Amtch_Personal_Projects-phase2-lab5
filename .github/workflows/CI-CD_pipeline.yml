@@ -174,19 +174,19 @@ jobs:
     - name: Update Glue Job Scripts
       run: |
         declare -A GLUE_JOB_SCRIPTS=(
-          ["lab5-raw(orders)"]="raw_orders_script.py"
-          ["lab5-raw(order_items)"]="raw_order_items_script.py"
-          ["lab5-raw(products)"]="raw_products_script.py"
-          ["lab5-Staging-orders"]="staging_orders_script.py"
-          ["lab5-Staging-order_items"]="staging_order_items_script.py"
-          ["lab5-staging_products"]="staging_products_script.py"
+          ["lab5-raw(orders)"]="raw_orders_job.py"
+          ["lab5-raw(order_items)"]="raw_orderitems_job.py"
+          ["lab5-raw(products)"]="raw_products_job.py"
+          ["lab5-Staging-orders"]="staging_order_job.py"
+          ["lab5-Staging-order_items"]="staging_orderitems_job.py"
+          ["lab5-staging_products"]="staging_products_job.py"
         )
         
         failed_jobs=()
         
         for job_name in "${!GLUE_JOB_SCRIPTS[@]}"; do
           script_file="${GLUE_JOB_SCRIPTS[$job_name]}"
-          script_location="s3://lakehouse-lab5/glue-scripts/${script_file}"
+          script_location="s3://aws-glue-assets-763927202642-eu-north-1/scripts/${script_file}"
           
           echo "Checking if Glue job '$job_name' exists..."
           if aws glue get-job --job-name "$job_name" >/dev/null 2>&1; then
