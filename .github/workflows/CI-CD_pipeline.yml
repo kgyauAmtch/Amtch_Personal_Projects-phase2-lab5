@@ -181,34 +181,34 @@ jobs:
           ["lab5-Staging-order_items"]="staging_order_items_script.py"
           ["lab5-staging_products"]="staging_products_script.py"
         )
-
+        
+        failed_jobs=()
+        
         for job_name in "${!GLUE_JOB_SCRIPTS[@]}"; do
           script_file="${GLUE_JOB_SCRIPTS[$job_name]}"
           script_location="s3://lakehouse-lab5/glue-scripts/${script_file}"
-
-          echo "Checking if Glue job $job_name exists..."
-          if aws glue get-job --job-name "$job_name" > /dev/null 2>&1; then
-            echo "Glue job $job_name exists. Updating script location to ${script_location}..."
-
-            update_payload=$(jq -n \
-              --arg script_location "$script_location" \
-              '{
-                JobUpdate: {
-                  Command: {
-                    Name: "glueetl",
-                    ScriptLocation: $script_location,
-                    PythonVersion: "3"
-                  }
-                }
-              }')
-
-            aws glue update-job --job-name "$job_name" --cli-input-json "$update_payload"
-            echo "Glue job $job_name updated."
+          
+          echo "Checking if Glue job '$job_name' exists..."
+          if aws glue get-job --job-name "$job_name" >/dev/null 2>&1; then
+            echo "Updating Glue job '$job_name' with script: ${script_location}"
+            
+            if aws glue update-job \
+              --job-name "$job_name" \
+              --job-update Command='{Name=glueetl,ScriptLocation='"$script_location"',PythonVersion=3}'; then
+              echo "✓ Successfully updated Glue job '$job_name'"
+            else
+              echo "✗ Failed to update Glue job '$job_name'"
+              failed_jobs+=("$job_name")
+            fi
           else
-            echo "Glue job $job_name not found. Skipping update."
+            echo "⚠ Glue job '$job_name' not found. Skipping."
           fi
         done
-
+        
+        if [ ${#failed_jobs[@]} -gt 0 ]; then
+          echo "Failed to update jobs: ${failed_jobs[*]}"
+          exit 1
+        fi
         
     - name: Deploy Step Function
       run: |
