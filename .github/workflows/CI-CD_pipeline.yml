@@ -173,7 +173,6 @@ jobs:
         
     - name: Update Glue Job Scripts
       run: |
-
       # Set the Glue IAM role (replace with your actual role ARN)
         GLUE_ROLE="arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/lab3-gluerole"
 
@@ -183,8 +182,7 @@ jobs:
           ["lab5-raw(products)"]="raw_products_job.py"
           ["lab5-Staging-orders"]="staging_order_job.py"
           ["lab5-Staging-order_items"]="staging_orderitems_job.py"
-          ["lab5-staging_products"]="staging_products_job.py"
-        )
+          ["lab5-staging_products"]="staging_products_job.py")
         
         failed_jobs=()
         
@@ -206,7 +204,7 @@ jobs:
               failed_jobs+=("$job_name")
             fi
           else
-            echo "⚠ Glue job '$job_name' not found. Skipping."
+            echo "Glue job '$job_name' not found. Skipping."
           fi
         done
         
