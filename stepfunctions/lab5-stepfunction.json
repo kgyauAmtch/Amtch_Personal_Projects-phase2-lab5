@@ -20,7 +20,7 @@
           "bucket.$": "$.s3info.bucket",
           "key.$": "$.s3info.key",
           "expected_headers": {
-            "orders_apr_2025.xlsx": [
+            "raw_landing_zone/orders/": [
               "order_id",
               "user_id",
               "order_timestamp",
@@ -28,7 +28,7 @@
               "total_amount",
               "date"
             ],
-            "order_items_apr_2025.xlsx": [
+            "raw_landing_zone/order_items/": [
               "id",
               "order_id",
               "user_id",
@@ -39,7 +39,7 @@
               "order_timestamp",
               "date"
             ],
-            "products.csv": [
+            "raw_landing_zone/products/": [
               "product_id",
               "product_name",
               "department_id",
@@ -65,7 +65,49 @@
         {
           "Variable": "$.validation_result.Payload.all_valid",
           "BooleanEquals": true,
-          "Next": "Check File Type"
+          "Next": "Run Python Shell Job - Convert to CSV"
+        }
+      ],
+      "Default": "Validation Failed"
+    },
+    "Run Python Shell Job - Convert to CSV": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "xlsxtocsv",
+        "Arguments": {
+          "--bucket.$": "$.s3info.bucket",
+          "--key.$": "$.s3info.key"
+        }
+      },
+      "ResultPath": "$.conversion_result",
+      "Next": "Check File Type",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Check File Type": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "raw_landing_zone/orders/*",
+          "Next": "Glue Job - Raw Orders"
+        },
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "raw_landing_zone/order_items/*",
+          "Next": "Glue Job - Raw OrderItems"
+        },
+        {
+          "Variable": "$.s3info.key",
+          "StringMatches": "raw_landing_zone/products/*",
+          "Next": "Glue Job - Raw Products"
         }
       ],
       "Default": "Validation Failed"
@@ -79,27 +121,6 @@
         "Subject": "Lab 5 ETL Validation Error"
       },
       "End": true
-    },
-    "Check File Type": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.s3info.key",
-          "StringMatches": "*orders*.xlsx",
-          "Next": "Glue Job - Raw Orders"
-        },
-        {
-          "Variable": "$.s3info.key",
-          "StringMatches": "*order_items*.xlsx",
-          "Next": "Glue Job - Raw OrderItems"
-        },
-        {
-          "Variable": "$.s3info.key",
-          "StringMatches": "*products*.csv",
-          "Next": "Glue Job - Raw Products"
-        }
-      ],
-      "Default": "Validation Failed"
     },
     "Glue Job - Raw Orders": {
       "Type": "Task",
@@ -299,14 +320,15 @@
         }
       ]
     },
-       "Archive File": {
+    "Archive File": {
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
       "Parameters": {
         "Bucket": "lakehouse-lab5",
         "CopySource.$": "States.Format('{}/{}', $.s3info.bucket, $.s3info.key)",
-        "Key.$": "States.Format('lakehouse-dwh/archived/stepfunction/{}', $.s3info.key)"
+        "Key.$": "States.Format('lakehouse-dwh/archived/{}', $.s3info.key)"
       },
+      "ResultPath": "$.archive_result",
       "Next": "Delete Original File",
       "Catch": [
         {
