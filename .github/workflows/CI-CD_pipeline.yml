@@ -172,42 +172,42 @@ jobs:
         fi
         
     - name: Update Glue Job Scripts
-  run: |
-    declare -A GLUE_JOB_SCRIPTS=(
-      ["lab5-raw(orders)"]="raw_orders_script.py"
-      ["lab5-raw(order_items)"]="raw_order_items_script.py"
-      ["lab5-raw(products)"]="raw_products_script.py"
-      ["lab5-Staging-orders"]="staging_orders_script.py"
-      ["lab5-Staging-order_items"]="staging_order_items_script.py"
-      ["lab5-staging_products"]="staging_products_script.py"
-    )
+      run: |
+        declare -A GLUE_JOB_SCRIPTS=(
+          ["lab5-raw(orders)"]="raw_orders_script.py"
+          ["lab5-raw(order_items)"]="raw_order_items_script.py"
+          ["lab5-raw(products)"]="raw_products_script.py"
+          ["lab5-Staging-orders"]="staging_orders_script.py"
+          ["lab5-Staging-order_items"]="staging_order_items_script.py"
+          ["lab5-staging_products"]="staging_products_script.py"
+        )
 
-    for job_name in "${!GLUE_JOB_SCRIPTS[@]}"; do
-      script_file="${GLUE_JOB_SCRIPTS[$job_name]}"
-      script_location="s3://lakehouse-lab5/glue-scripts/${script_file}"
+        for job_name in "${!GLUE_JOB_SCRIPTS[@]}"; do
+          script_file="${GLUE_JOB_SCRIPTS[$job_name]}"
+          script_location="s3://lakehouse-lab5/glue-scripts/${script_file}"
 
-      echo "Checking if Glue job $job_name exists..."
-      if aws glue get-job --job-name "$job_name" > /dev/null 2>&1; then
-        echo "Glue job $job_name exists. Updating script location to ${script_location}..."
+          echo "Checking if Glue job $job_name exists..."
+          if aws glue get-job --job-name "$job_name" > /dev/null 2>&1; then
+            echo "Glue job $job_name exists. Updating script location to ${script_location}..."
 
-        update_payload=$(jq -n \
-          --arg script_location "$script_location" \
-          '{
-            JobUpdate: {
-              Command: {
-                Name: "glueetl",
-                ScriptLocation: $script_location,
-                PythonVersion: "3"
-              }
-            }
-          }')
+            update_payload=$(jq -n \
+              --arg script_location "$script_location" \
+              '{
+                JobUpdate: {
+                  Command: {
+                    Name: "glueetl",
+                    ScriptLocation: $script_location,
+                    PythonVersion: "3"
+                  }
+                }
+              }')
 
-        aws glue update-job --job-name "$job_name" --cli-input-json "$update_payload"
-        echo "Glue job $job_name updated."
-      else
-        echo "Glue job $job_name not found. Skipping update."
-      fi
-    done
+            aws glue update-job --job-name "$job_name" --cli-input-json "$update_payload"
+            echo "Glue job $job_name updated."
+          else
+            echo "Glue job $job_name not found. Skipping update."
+          fi
+        done
 
         
     - name: Deploy Step Function
