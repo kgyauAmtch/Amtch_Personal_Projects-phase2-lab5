@@ -173,7 +173,7 @@ jobs:
         
     - name: Update Glue Job Scripts
       run: |
-      # Set the Glue IAM role (replace with your actual role ARN)
+        # Set the Glue IAM role (replace with your actual role ARN)
         GLUE_ROLE="arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/lab3-gluerole"
 
         declare -A GLUE_JOB_SCRIPTS=(
@@ -182,7 +182,8 @@ jobs:
           ["lab5-raw(products)"]="raw_products_job.py"
           ["lab5-Staging-orders"]="staging_order_job.py"
           ["lab5-Staging-order_items"]="staging_orderitems_job.py"
-          ["lab5-staging_products"]="staging_products_job.py")
+          ["lab5-staging_products"]="staging_products_job.py"
+        )
         
         failed_jobs=()
         
@@ -197,7 +198,6 @@ jobs:
             if aws glue update-job \
               --job-name "$job_name" \
               --job-update "Role=$GLUE_ROLE,Command={Name=glueetl,ScriptLocation=$script_location,PythonVersion=3}"; then
-
               echo "✓ Successfully updated Glue job '$job_name'"
             else
               echo "✗ Failed to update Glue job '$job_name'"
@@ -212,6 +212,8 @@ jobs:
           echo "Failed to update jobs: ${failed_jobs[*]}"
           exit 1
         fi
+        
+        echo "Glue job script updates completed successfully!"
         
     - name: Deploy Step Function
       run: |
