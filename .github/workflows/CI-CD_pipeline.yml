@@ -164,7 +164,7 @@ jobs:
       run: |
         # Upload Spark job scripts to S3
         if [ -d "spark-jobs/" ]; then
-          aws s3 sync spark-jobs/ s3://lakehouse-lab5/glue-scripts/ \
+          aws s3 sync spark-jobs/ s3://aws-glue-assets-763927202642-eu-north-1/scripts/ \
             --exclude "*.pyc" \
             --exclude "__pycache__/*" \
             --exclude "*.git*"
@@ -172,27 +172,43 @@ jobs:
         fi
         
     - name: Update Glue Job Scripts
-      run: |
-        # Update Glue jobs to use the latest scripts
-        GLUE_JOBS=(
-          "lab5-raw(orders)"
-          "lab5-raw(order_items)" 
-          "lab5-raw(products)"
-          "lab5-Staging-orders"
-          "lab5-Staging-order_items"
-          "lab5-staging_products"
-        )
-        
-        for job in "${GLUE_JOBS[@]}"; do
-          echo "Checking if Glue job $job exists..."
-          if aws glue get-job --job-name "$job" > /dev/null 2>&1; then
-            echo "Glue job $job exists"
-            # Note: You might want to update the script location here
-            # aws glue update-job --job-name "$job" --job-update ScriptLocation=s3://lakehouse-lab5/glue-scripts/...
-          else
-            echo "Glue job $job not found"
-          fi
-        done
+  run: |
+    declare -A GLUE_JOB_SCRIPTS=(
+      ["lab5-raw(orders)"]="raw_orders_script.py"
+      ["lab5-raw(order_items)"]="raw_order_items_script.py"
+      ["lab5-raw(products)"]="raw_products_script.py"
+      ["lab5-Staging-orders"]="staging_orders_script.py"
+      ["lab5-Staging-order_items"]="staging_order_items_script.py"
+      ["lab5-staging_products"]="staging_products_script.py"
+    )
+
+    for job_name in "${!GLUE_JOB_SCRIPTS[@]}"; do
+      script_file="${GLUE_JOB_SCRIPTS[$job_name]}"
+      script_location="s3://lakehouse-lab5/glue-scripts/${script_file}"
+
+      echo "Checking if Glue job $job_name exists..."
+      if aws glue get-job --job-name "$job_name" > /dev/null 2>&1; then
+        echo "Glue job $job_name exists. Updating script location to ${script_location}..."
+
+        update_payload=$(jq -n \
+          --arg script_location "$script_location" \
+          '{
+            JobUpdate: {
+              Command: {
+                Name: "glueetl",
+                ScriptLocation: $script_location,
+                PythonVersion: "3"
+              }
+            }
+          }')
+
+        aws glue update-job --job-name "$job_name" --cli-input-json "$update_payload"
+        echo "Glue job $job_name updated."
+      else
+        echo "Glue job $job_name not found. Skipping update."
+      fi
+    done
+
         
     - name: Deploy Step Function
       run: |
