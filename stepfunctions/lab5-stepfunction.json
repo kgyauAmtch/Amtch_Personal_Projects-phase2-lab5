@@ -299,13 +299,30 @@
         }
       ]
     },
-    "Archive File": {
+       "Archive File": {
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
       "Parameters": {
         "Bucket": "lakehouse-lab5",
         "CopySource.$": "States.Format('{}/{}', $.s3info.bucket, $.s3info.key)",
         "Key.$": "States.Format('lakehouse-dwh/archived/stepfunction/{}', $.s3info.key)"
+      },
+      "Next": "Delete Original File",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "Log Error and Alert"
+        }
+      ]
+    },
+    "Delete Original File": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
+      "Parameters": {
+        "Bucket.$": "$.s3info.bucket",
+        "Key.$": "$.s3info.key"
       },
       "Next": "End State",
       "Catch": [
